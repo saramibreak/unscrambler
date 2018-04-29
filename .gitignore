@@ -1,0 +1,6 @@
+Debug/
+Release/
+ipch/
+.vs/
+unscrambler.VC.*
+unscrambler.vcxproj.user
