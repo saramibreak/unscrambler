@@ -183,7 +183,8 @@ int main(int argc, char *argv[]) {
         
         if(unscramble_frame(current_seed, b_in, b_out)) {
             fprintf(stderr, "error unscrambling recording frame %d.\n", s>>4);
-            ret=5;
+//            ret=5;
+			ret=s>>4;
             goto finish;
         }
         
