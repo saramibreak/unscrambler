@@ -1,8 +1,9 @@
 /*
-unscrambler 0.4: unscramble not standard IVs scrambled DVDs thru 
+unscrambler 0.5: unscramble not standard IVs scrambled DVDs thru 
 bruteforce, intended for Gamecube/WII Optical Disks.
 
 Copyright (C) 2006  Victor Muñoz (xt5@ingenieria-inversa.cl)
+Copyright (C) 2018-2023  Sarami
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -24,13 +25,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #pragma warning(disable:4820)
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <time.h>
 #pragma warning(pop)
 #include "ecma-267.h"
 
 #define MAX_SEEDS 4
 
-unsigned char b_in[0x8100];
+unsigned char b_in[0x9500];
 unsigned char b_out[0x8000];
 
 typedef struct t_seed {
@@ -65,41 +67,70 @@ t_seed *add_seed(t_seed *seeds, unsigned short seed) {
 
 /* test if the current seed is the one used for this sector, the check is done 
 comparing the EDC generated, with the one at the bottom of sector */
-int test_seed(int j) {
-    int i;
+int test_seed(int j, unsigned long type) {
+    int i,k;
+    unsigned int edcPos;
     unsigned char buf[2064];
       
     LFSR_init(j);
 
-    memcpy(buf, b_in, 2064);
+    if (type == 0 || type == 1) {
+        memcpy(buf, b_in, 2064);
+        edcPos = 2060;
+    }
+    else {
+        for (k = 0; k < 12; k++) {
+            memcpy(buf + 172 * k, b_in + 182 * k, 172);
+        }
+        edcPos = 2170;
+    }
     for(i=12; i<2060; i++) buf[i]^=LFSR_byte();
-    if(edc_calc(0x00000000, buf, 2060) == swap32(*( (unsigned int *) (&b_in[2060]) )) ) {
+    if(edc_calc(0x00000000, buf, 2060) == swap32(*( (unsigned int *) (&b_in[edcPos]) )) ) {
         return 0;
     }
     return -1;
 }
 
 /* unscramble a complete frame, based on the seed already cached */
-int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout) {
+int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, unsigned long type) {
     unsigned char *bin;
     unsigned char *bout;
     unsigned int edc;
     unsigned int *_4bin;
     unsigned int *_4cipher;
-    
-    int i,j;
+    unsigned char buf[2064];
+
+    int i,j,k;
     
     for(j=0; j<16; j++) {
       
-        bin=&_bin[0x810*j];
         bout=&_bout[0x800*j];
         
-        _4bin=(unsigned int *)&bin[12];
-        _4cipher=(unsigned int *)seed->streamcipher;
+        if (type == 0 || type == 1) {
+            bin = &_bin[0x810*j];
+            _4bin = (unsigned int*)&bin[12];
+        }
+        else {
+            bin = &_bin[0x950 * j];
+            for (k = 0; k < 12; k++) {
+                memcpy(buf + 172 * k, bin + 182 * k, 172);
+            }
+            _4bin = (unsigned int*)&buf[12];
+        }
+        _4cipher = (unsigned int*)seed->streamcipher;
 
         for(i=0; i<512; i++) _4bin[i]^=_4cipher[i];
-        memcpy(bout, bin+6, 2048); // copy CPR_MAI bytes
-        
+
+        if (type == 2) {
+            bin = buf;
+        }
+        if (type == 0) {
+            memcpy(bout, bin+6, 2048); // copy CPR_MAI bytes
+        }
+        else {
+            memcpy(bout, bin + 12, 2048);
+        }
+
         edc=edc_calc(0x00000000, bin, 2060);
         if(edc != swap32(*( (unsigned int *) (&bin[2060]) )) ) {
             printf("error: bad edc (%08x) must be %08x\n", edc, swap32(*( (unsigned int *) (&bin[2060]) )));
@@ -113,7 +144,10 @@ int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout) {
 int main(int argc, char *argv[]) {
     int i,j,s;
     int ret;
-    
+    size_t readSize;
+    unsigned long type;
+    char* endptr;
+
     FILE *in, *out;
     
     time_t start;
@@ -121,11 +155,17 @@ int main(int argc, char *argv[]) {
     t_seed *seeds;
     t_seed *current_seed;
     
-    printf("GOD/WOD unscrambler 0.4.1 (xt5@ingenieria-inversa.cl)\n\n"
+    printf("GOD/WOD unscrambler 0.5 (xt5@ingenieria-inversa.cl)\n\n"
            "This program is distributed under GPL license, \n"
            "see the LICENSE file for more info.\n\n");
-    if(argc<3) {
-        printf("%s input output\n",argv[0]);
+    if(argc<4) {
+        printf(
+        	"Usage\n"
+            "unscrambler.exe input output type\n"
+        	"\tinput: .raw file\n"
+        	"\toutput: .iso file\n"
+            "\ttype\t0: Nintendo disc, 1: 2064 bytes/sector, 2: 2384 bytes/sector\n"
+            );
         return 0;
     }
     
@@ -140,6 +180,16 @@ int main(int argc, char *argv[]) {
         return 2;
     }
     
+    type = strtoul(argv[3], &endptr, 10);
+    if (*endptr) {
+        fprintf(stderr, "[%s] is invalid argument. Please input integer.\n", endptr);
+        return -1;
+    }
+    else if (type > 2) {
+        fprintf(stderr, "[%s] is invalid argument. Please input 0, 1 or 2.\n", endptr);
+        return -1;
+    }
+
     for(i=0; i<16; i++) {
         for(j=0; j<MAX_SEEDS; j++) {
             _seeds[i*MAX_SEEDS+j].seed=-1;
@@ -151,12 +201,19 @@ int main(int argc, char *argv[]) {
     
     s=0;
     start=time(0);
+
+    if (type == 2) {
+        readSize = 0x9500;
+    }
+    else {
+        readSize = 0x8100;
+    }
     
-    fread(b_in, 1, 0x8100, in);
+    fread(b_in, 1, readSize, in);
     while (!feof(in) && !ferror(in)) {
         seeds=&_seeds[((s>>4)&0xF)*MAX_SEEDS];
         while((seeds->seed)>=0) {
-            if(!test_seed(seeds->seed)) {
+            if(!test_seed(seeds->seed, type)) {
                 current_seed=seeds;
                 goto seed_found;
             }
@@ -164,7 +221,7 @@ int main(int argc, char *argv[]) {
         }
         
         for(j=0; j<0x7FFF; j++) {
-            if(!test_seed(j)) {
+            if(!test_seed(j, type)) {
                 current_seed=add_seed(seeds,j);
                 //printf("caching at %x\n", s);
                 if(current_seed==NULL) {
@@ -182,7 +239,7 @@ int main(int argc, char *argv[]) {
         
         seed_found:
         
-        if(unscramble_frame(current_seed, b_in, b_out)) {
+        if(unscramble_frame(current_seed, b_in, b_out, type)) {
             fprintf(stderr, "error unscrambling recording frame %d.\n", s>>4);
 //            ret=5;
             ret=s>>4;
@@ -196,7 +253,7 @@ int main(int argc, char *argv[]) {
         }
         
         s+=16;
-        fread(b_in, 1, 0x8100, in);
+        fread(b_in, 1, readSize, in);
     }
     
     printf("image successfully unscrambled.\n");
