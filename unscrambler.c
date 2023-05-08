@@ -1,5 +1,5 @@
 /*
-unscrambler 0.5: unscramble not standard IVs scrambled DVDs thru 
+unscrambler 0.5.1: unscramble not standard IVs scrambled DVDs thru 
 bruteforce, intended for Gamecube/WII Optical Disks.
 
 Copyright (C) 2006  Victor Muñoz (xt5@ingenieria-inversa.cl)
@@ -92,7 +92,7 @@ int test_seed(int j, unsigned long type) {
 }
 
 /* unscramble a complete frame, based on the seed already cached */
-int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, unsigned long type) {
+int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, int blockSize, unsigned long type) {
     unsigned char *bin;
     unsigned char *bout;
     unsigned int edc;
@@ -102,7 +102,7 @@ int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, un
 
     int i,j,k;
     
-    for(j=0; j<16; j++) {
+    for(j=0; j< blockSize; j++) {
       
         bout=&_bout[0x800*j];
         
@@ -145,17 +145,22 @@ int main(int argc, char *argv[]) {
     int i,j,s;
     int ret;
     size_t readSize;
+    size_t writeSize;
     unsigned long type;
     char* endptr;
 
     FILE *in, *out;
-    
+    unsigned long long rawFileSize;
+    int totalSectorSize;
+    int blockSize;
+    int lastSectorsPerBlock;
+
     time_t start;
     
     t_seed *seeds;
     t_seed *current_seed;
     
-    printf("GOD/WOD unscrambler 0.5 (xt5@ingenieria-inversa.cl)\n\n"
+    printf("GOD/WOD unscrambler 0.5.1 (xt5@ingenieria-inversa.cl)\n\n"
            "This program is distributed under GPL license, \n"
            "see the LICENSE file for more info.\n\n");
     if(argc<4) {
@@ -190,6 +195,10 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    _fseeki64(in, 0, SEEK_END);
+    rawFileSize = (unsigned long long)_ftelli64(in);
+    rewind(in);
+
     for(i=0; i<16; i++) {
         for(j=0; j<MAX_SEEDS; j++) {
             _seeds[i*MAX_SEEDS+j].seed=-1;
@@ -202,13 +211,18 @@ int main(int argc, char *argv[]) {
     s=0;
     start=time(0);
 
+    blockSize = 16;
     if (type == 2) {
-        readSize = 0x9500;
+        readSize = 0x950 * blockSize;
+        totalSectorSize = (int)(rawFileSize / 0x950);
     }
     else {
-        readSize = 0x8100;
+        readSize = 0x810 * blockSize;
+        totalSectorSize = (int)(rawFileSize / 0x810);
     }
-    
+    writeSize = 0x800 * blockSize;
+    lastSectorsPerBlock = totalSectorSize % blockSize;
+
     fread(b_in, 1, readSize, in);
     while (!feof(in) && !ferror(in)) {
         seeds=&_seeds[((s>>4)&0xF)*MAX_SEEDS];
@@ -239,20 +253,31 @@ int main(int argc, char *argv[]) {
         
         seed_found:
         
-        if(unscramble_frame(current_seed, b_in, b_out, type)) {
+        if(unscramble_frame(current_seed, b_in, b_out, blockSize, type)) {
             fprintf(stderr, "error unscrambling recording frame %d.\n", s>>4);
 //            ret=5;
             ret=s>>4;
             goto finish;
         }
         
-        if(fwrite(b_out, 1, 0x8000, out)!=0x8000) {
+        if(fwrite(b_out, 1, writeSize, out)!= writeSize) {
             fprintf(stderr, "can't write to the output file, check if there is enough free space.\n");
             ret=6;
             goto finish;        
         }
         
-        s+=16;
+        s+= blockSize;
+        if (s > totalSectorSize - blockSize && lastSectorsPerBlock > 0) {
+            s += lastSectorsPerBlock;
+            blockSize = lastSectorsPerBlock;
+            if (type == 2) {
+                readSize = 0x950 * lastSectorsPerBlock;
+            }
+            else {
+                readSize = 0x810 * lastSectorsPerBlock;
+            }
+            writeSize = 0x800 * lastSectorsPerBlock;
+        }
         fread(b_in, 1, readSize, in);
     }
     
