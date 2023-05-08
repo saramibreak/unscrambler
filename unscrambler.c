@@ -43,6 +43,18 @@ typedef struct t_seed {
 
 t_seed _seeds[(MAX_SEEDS+1)*16];
 
+#ifndef _WIN32
+int _fseeki64(FILE* fp, long ofs, int origin)
+{
+    return fseeko(fp, ofs, origin);
+}
+
+off_t _ftelli64(FILE* fp)
+{
+    return ftello(fp);
+}
+#endif
+
 /* swap the endianess of a 32bit integer */
 unsigned int swap32(unsigned int p) {
     return p<<24|((p<<8)&0xFF0000)|((p>>8)&0xFF00)|(p>>24);
@@ -213,14 +225,14 @@ int main(int argc, char *argv[]) {
 
     blockSize = 16;
     if (type == 2) {
-        readSize = 0x950 * blockSize;
+        readSize = (size_t)(0x950 * blockSize);
         totalSectorSize = (int)(rawFileSize / 0x950);
     }
     else {
-        readSize = 0x810 * blockSize;
+        readSize = (size_t)(0x810 * blockSize);
         totalSectorSize = (int)(rawFileSize / 0x810);
     }
-    writeSize = 0x800 * blockSize;
+    writeSize = (size_t)(0x800 * blockSize);
     lastSectorsPerBlock = totalSectorSize % blockSize;
 
     fread(b_in, 1, readSize, in);
@@ -271,12 +283,12 @@ int main(int argc, char *argv[]) {
             s += lastSectorsPerBlock;
             blockSize = lastSectorsPerBlock;
             if (type == 2) {
-                readSize = 0x950 * lastSectorsPerBlock;
+                readSize = (size_t)(0x950 * lastSectorsPerBlock);
             }
             else {
-                readSize = 0x810 * lastSectorsPerBlock;
+                readSize = (size_t)(0x810 * lastSectorsPerBlock);
             }
-            writeSize = 0x800 * lastSectorsPerBlock;
+            writeSize = (size_t)(0x800 * lastSectorsPerBlock);
         }
         fread(b_in, 1, readSize, in);
     }
