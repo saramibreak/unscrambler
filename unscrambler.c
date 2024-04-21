@@ -1,5 +1,5 @@
 /*
-unscrambler 0.5.2: unscramble not standard IVs scrambled DVDs thru 
+unscrambler 0.5.3: unscramble not standard IVs scrambled DVDs thru 
 bruteforce, intended for Gamecube/WII Optical Disks and DVD.
 
 Copyright (C) 2006  Victor Muñoz (xt5@ingenieria-inversa.cl)
@@ -185,7 +185,7 @@ int main(int argc, char *argv[]) {
     t_seed *seeds;
     t_seed *current_seed;
     
-    printf("GOD/WOD/DVD unscrambler 0.5.2 (xt5@ingenieria-inversa.cl)\n\n"
+    printf("GOD/WOD/DVD unscrambler 0.5.3 (xt5@ingenieria-inversa.cl)\n\n"
            "This program is distributed under GPL license, \n"
            "see the LICENSE file for more info.\n\n");
     if(argc<4) {
