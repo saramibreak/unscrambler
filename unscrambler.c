@@ -1,5 +1,5 @@
 /*
-unscrambler 0.5.3: unscramble not standard IVs scrambled DVDs thru 
+unscrambler 0.5.4: unscramble not standard IVs scrambled DVDs thru 
 bruteforce, intended for Gamecube/WII Optical Disks and DVD.
 
 Copyright (C) 2006  Victor Muñoz (xt5@ingenieria-inversa.cl)
@@ -92,11 +92,17 @@ int test_seed(int j, unsigned long type) {
     }
     else if (type == 2) {
         for (k = 0; k < 12; k++) {
+            memcpy(buf + 172 * k, b_in + 172 * k, 172);
+        }
+        edcPos = 2060;
+    }
+    else if (type == 3) {
+        for (k = 0; k < 12; k++) {
             memcpy(buf + 172 * k, b_in + 192 * k, 172);
         }
         edcPos = 2280;
     }
-    else if (type == 3) {
+    else if (type == 4) {
         for (k = 0; k < 12; k++) {
             memcpy(buf + 172 * k, b_in + 182 * k, 172);
         }
@@ -129,13 +135,20 @@ int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, in
             _4bin = (unsigned int*)&bin[12];
         }
         else if (type == 2) {
+            bin = &_bin[0x8BC * j];
+            for (k = 0; k < 12; k++) {
+                memcpy(buf + 172 * k, bin + 172 * k, 172);
+            }
+            _4bin = (unsigned int*)&buf[12];
+        }
+        else if (type == 3) {
             bin = &_bin[0x900 * j];
             for (k = 0; k < 12; k++) {
                 memcpy(buf + 172 * k, bin + 192 * k, 172);
             }
             _4bin = (unsigned int*)&buf[12];
         }
-        else if (type == 3) {
+        else if (type == 4) {
             bin = &_bin[0x950 * j];
             for (k = 0; k < 12; k++) {
                 memcpy(buf + 172 * k, bin + 182 * k, 172);
@@ -146,7 +159,7 @@ int unscramble_frame(t_seed *seed, unsigned char *_bin, unsigned char *_bout, in
 
         for(i=0; i<512; i++) _4bin[i]^=_4cipher[i];
 
-        if (type == 2 || type == 3) {
+        if (type == 2 || type == 3 || type == 4) {
             bin = buf;
         }
         if (type == 0) {
@@ -185,7 +198,7 @@ int main(int argc, char *argv[]) {
     t_seed *seeds;
     t_seed *current_seed;
     
-    printf("GOD/WOD/DVD unscrambler 0.5.3 (xt5@ingenieria-inversa.cl)\n\n"
+    printf("GOD/WOD/DVD unscrambler 0.5.4 (xt5@ingenieria-inversa.cl)\n\n"
            "This program is distributed under GPL license, \n"
            "see the LICENSE file for more info.\n\n");
     if(argc<4) {
@@ -195,7 +208,7 @@ int main(int argc, char *argv[]) {
         	"\tinput: .raw file\n"
         	"\toutput: .iso file\n"
             "\ttype\t0: Nintendo disc, 1: DVD 2064 bytes/sector\n"
-            "      \t2: DVD 2304 bytes/sector, 3: DVD 2384 bytes/sector\n"
+            "      \t2: DVD 2236 bytes/sector, 3: DVD 2304 bytes/sector, 4: DVD 2384 bytes/sector\n"
             );
         return 0;
     }
@@ -239,10 +252,14 @@ int main(int argc, char *argv[]) {
 
     blockSize = 16;
     if (type == 2) {
+        readSize = (size_t)(0x8BC * blockSize);
+        totalSectorSize = (int)(rawFileSize / 0x8BC);
+    }
+    else if (type == 3) {
         readSize = (size_t)(0x900 * blockSize);
         totalSectorSize = (int)(rawFileSize / 0x900);
     }
-    else if (type == 3) {
+    else if (type == 4) {
         readSize = (size_t)(0x950 * blockSize);
         totalSectorSize = (int)(rawFileSize / 0x950);
     }
@@ -301,9 +318,12 @@ int main(int argc, char *argv[]) {
             s += lastSectorsPerBlock;
             blockSize = lastSectorsPerBlock;
             if (type == 2) {
-                readSize = (size_t)(0x900 * lastSectorsPerBlock);
+                readSize = (size_t)(0x8BC * lastSectorsPerBlock);
             }
             else if (type == 3) {
+                readSize = (size_t)(0x900 * lastSectorsPerBlock);
+            }
+            else if (type == 4) {
                 readSize = (size_t)(0x950 * lastSectorsPerBlock);
             }
             else {
